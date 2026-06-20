@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 
 import '../services/haptic_service.dart';
 import '../services/money_detector.dart';
@@ -36,9 +37,47 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
   DetectionResult? _last;
   ({String title, String message})? _banner;
 
+  CameraController? _cameraController;
+  bool _isCameraInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeCamera();
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+
+      // Select the rear camera for money detection
+      final rearCamera = cameras.firstWhere(
+        (cam) => cam.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+
+      _cameraController = CameraController(
+        rearCamera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+
+      await _cameraController!.initialize();
+      if (mounted) {
+        setState(() {
+          _isCameraInitialized = true;
+        });
+      }
+    } catch (e) {
+      debugPrint("Camera initialization failed: $e");
+    }
+  }
+
   @override
   void dispose() {
     _scroll.dispose();
+    _cameraController?.dispose();
     super.dispose();
   }
 
@@ -141,15 +180,24 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Camera viewfinder (mocked with a static banknote image).
+          // Camera viewfinder (live rear camera preview or static asset fallback)
           Positioned.fill(
             child: ExcludeSemantics(
-              child: Image.asset(
-                'assets/images/camera_bg.png',
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) =>
-                    const ColoredBox(color: Color(0xFF2A2A2A)),
-              ),
+              child: _isCameraInitialized && _cameraController != null
+                  ? FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: _cameraController!.value.previewSize?.height ?? MediaQuery.of(context).size.width,
+                        height: _cameraController!.value.previewSize?.width ?? MediaQuery.of(context).size.height,
+                        child: CameraPreview(_cameraController!),
+                      ),
+                    )
+                  : Image.asset(
+                      'assets/images/camera_bg.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) =>
+                          const ColoredBox(color: Color(0xFF2A2A2A)),
+                    ),
             ),
           ),
           // Top gradient for status-area legibility.

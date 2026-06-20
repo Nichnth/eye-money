@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/read_count_screen.dart';
+import 'screens/register_screen.dart';
 import 'services/tts_service.dart';
 import 'theme/app_theme.dart';
 
@@ -20,7 +20,7 @@ class EyeMoneyApp extends StatelessWidget {
       title: 'Eye-Money',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      home: const ReadCountScreen(),
+      home: const RegisterScreen(),
     );
   }
 }

@@ -18,6 +18,23 @@ class TtsService {
     if (_ready) return;
     try {
       await _tts.setLanguage('id-ID');
+
+      // Attempt to explicitly set an Indonesian voice to prevent foreign accents
+      final dynamic voices = await _tts.getVoices;
+      if (voices != null && voices is List) {
+        for (var v in voices) {
+          if (v is Map) {
+            final locale = v["locale"]?.toString().toLowerCase() ?? "";
+            final name = v["name"]?.toString() ?? "";
+            // Look for Indonesian locales like 'id-ID', 'id_ID', etc.
+            if (locale.startsWith("id")) {
+              await _tts.setVoice({"name": name, "locale": v["locale"]});
+              break;
+            }
+          }
+        }
+      }
+
       await _tts.setSpeechRate(0.5);
       await _tts.setPitch(1.0);
       await _tts.awaitSpeakCompletion(true);
