@@ -41,7 +41,9 @@ String _joinDan(List<String> parts) {
 
 /// Seam for a real camera + ML detector to drop in later.
 abstract class MoneyDetector {
-  Future<DetectionResult> detect();
+  /// Detects the notes in the captured camera frame at [imagePath]
+  /// (when one is available). The mock ignores it; a real detector reads it.
+  Future<DetectionResult> detect({String? imagePath});
 }
 
 /// Stand-in detector: returns a random plausible mix of notes after a delay.
@@ -53,7 +55,7 @@ class MockMoneyDetector implements MoneyDetector {
   final Duration delay;
 
   @override
-  Future<DetectionResult> detect() async {
+  Future<DetectionResult> detect({String? imagePath}) async {
     await Future.delayed(delay);
     final kinds = 1 + _rng.nextInt(2); // 1-2 distinct denominations
     final chosen = <int>{};

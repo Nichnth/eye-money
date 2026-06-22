@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 
 import '../services/haptic_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/a11y.dart';
 import '../utils/voice.dart';
 import 'login_screen.dart';
 import 'read_count_screen.dart';
@@ -150,13 +151,18 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     voiceFeedback(context, "Pemindaian sukses.");
     HapticService.instance.success();
 
-    // After 2 seconds, transition to read count
-    _stateTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ReadCountScreen()),
-        );
-      }
+    // After 2 seconds, transition to read count. Release the FRONT camera
+    // first so the REAR camera on the next screen can open — many devices
+    // (e.g. MIUI) can't hold two camera clients at once, which otherwise
+    // leaves the rear preview blank/white.
+    _stateTimer = Timer(const Duration(seconds: 2), () async {
+      if (!mounted) return;
+      await _cameraController?.dispose();
+      _cameraController = null;
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const ReadCountScreen()),
+      );
     });
   }
 
@@ -363,36 +369,54 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
                     // State texts
                     if (_state == RegisterState.welcome) ...[
-                      const Text(
-                        "Selamat datang",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 40,
-                          fontWeight: FontWeight.bold,
+                      Semantics(
+                        liveRegion: true,
+                        attributedLabel: idLabel("Selamat datang"),
+                        child: const ExcludeSemantics(
+                          child: Text(
+                            "Selamat datang",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 40,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Text(
-                        "Harap pindai wajah anda terlebih dahulu sebelum menggunakan aplikasi\n\nKetuk dua kali pada layar untuk memindai wajah",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          fontSize: 22,
-                          height: 1.4,
+                      Semantics(
+                        attributedLabel: idLabel(
+                            "Harap pindai wajah anda terlebih dahulu sebelum menggunakan aplikasi. Ketuk dua kali pada layar untuk memindai wajah"),
+                        child: ExcludeSemantics(
+                          child: Text(
+                            "Harap pindai wajah anda terlebih dahulu sebelum menggunakan aplikasi\n\nKetuk dua kali pada layar untuk memindai wajah",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              fontSize: 22,
+                              height: 1.4,
+                            ),
+                          ),
                         ),
                       ),
                     ] else ...[
                       // Texts below the white scan container, matching Figma
                       Column(
                         children: [
-                          Text(
-                            _getTitleText(),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
+                          Semantics(
+                            liveRegion: true,
+                            attributedLabel: idLabel(_getTitleText()),
+                            child: ExcludeSemantics(
+                              child: Text(
+                                _getTitleText(),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 12),

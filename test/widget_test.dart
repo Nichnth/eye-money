@@ -3,8 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:eye_money/main.dart';
 import 'package:eye_money/screens/history_screen.dart';
+import 'package:eye_money/screens/read_count_screen.dart';
 import 'package:eye_money/services/money_detector.dart';
 import 'package:eye_money/utils/format.dart';
 
@@ -38,7 +38,7 @@ void main() {
   });
 
   testWidgets('Read screen shows the scan prompt', (tester) async {
-    await tester.pumpWidget(const EyeMoneyApp());
+    await tester.pumpWidget(const MaterialApp(home: ReadCountScreen()));
     await tester.pump();
     expect(find.textContaining('Arahkan kamera ke uang'), findsOneWidget);
   });

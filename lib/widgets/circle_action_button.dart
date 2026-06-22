@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../utils/a11y.dart';
 
 /// A large (96px) circular action button — the primary control on both
 /// screens (camera / wallet / mic). Big tap target, exposed to screen
@@ -30,8 +31,8 @@ class CircleActionButton extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: !busy,
-      label: label,
-      hint: hint,
+      attributedLabel: idLabel(label),
+      attributedHint: hint == null ? null : idLabel(hint!),
       child: Material(
         color: background,
         shape: const CircleBorder(),

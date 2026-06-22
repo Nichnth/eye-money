@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../utils/a11y.dart';
 
 /// Top notification card (e.g. "Nominal berhasil ditambahkan").
 ///
@@ -20,7 +21,7 @@ class NotificationBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       liveRegion: true,
-      label: '$title. $message',
+      attributedLabel: idLabel('$title. $message'),
       child: ExcludeSemantics(
         child: Container(
           width: double.infinity,

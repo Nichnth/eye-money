@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../utils/a11y.dart';
 
 /// A chat-style message bubble, matching the Eye-Money Figma design.
 ///
@@ -18,6 +19,10 @@ class ChatBubble extends StatelessWidget {
   final String time;
   final String semanticsLabel;
 
+  /// When true the bubble is announced by the screen reader as soon as it
+  /// appears (used for the AI's spoken detection result).
+  final bool liveRegion;
+
   const ChatBubble({
     super.key,
     required this.isAi,
@@ -29,6 +34,7 @@ class ChatBubble extends StatelessWidget {
     required this.semanticsLabel,
     this.subtitle,
     this.fullWidth = false,
+    this.liveRegion = false,
   });
 
   @override
@@ -48,7 +54,8 @@ class ChatBubble extends StatelessWidget {
 
     return Semantics(
       container: true,
-      label: semanticsLabel,
+      liveRegion: liveRegion,
+      attributedLabel: idLabel(semanticsLabel),
       child: ExcludeSemantics(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),

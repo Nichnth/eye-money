@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 
 import '../services/haptic_service.dart';
 import '../services/money_detector.dart';
 import '../state/pocket_store.dart';
+import '../utils/a11y.dart';
 import '../utils/format.dart';
 import '../utils/voice.dart';
 import '../widgets/chat_bubble.dart';
@@ -34,8 +37,9 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
   final List<_ReadMsg> _messages = [];
 
   bool _scanning = false;
-  DetectionResult? _last;
+  DetectionResult? _pending; // counted but not yet saved; the next mic tap saves it.
   ({String title, String message})? _banner;
+  Timer? _bannerTimer;
 
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
@@ -76,9 +80,24 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
 
   @override
   void dispose() {
+    _bannerTimer?.cancel();
     _scroll.dispose();
     _cameraController?.dispose();
     super.dispose();
+  }
+
+  /// Shows the top banner and auto-hides it so it never lingers over the camera.
+  void _showBanner(String title, String message) {
+    _bannerTimer?.cancel();
+    setState(() => _banner = (title: title, message: message));
+    _bannerTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _banner = null);
+    });
+  }
+
+  void _dismissBanner() {
+    _bannerTimer?.cancel();
+    if (_banner != null) setState(() => _banner = null);
   }
 
   void _scrollToBottom() {
@@ -93,9 +112,21 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
     });
   }
 
+  /// The mic carries both voice commands. With no unsaved result it runs
+  /// "Berapa uangnya?" (scan + count); once a result is on screen the next tap
+  /// runs "Simpan uang" (save into the pocket).
   Future<void> _onMic() async {
     if (_scanning) return;
+    if (_pending != null) {
+      await _savePending();
+      return;
+    }
+    await _countMoney();
+  }
+
+  Future<void> _countMoney() async {
     HapticService.instance.press();
+    _bannerTimer?.cancel();
     setState(() {
       _messages.add(_ReadMsg(isUser: true, plain: 'Berapa uangnya?', time: DateTime.now()));
       _scanning = true;
@@ -103,11 +134,23 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
     });
     _scrollToBottom();
 
-    final result = await _detector.detect();
+    // Actually use the camera: capture a frame and hand it to the detector.
+    String? shotPath;
+    try {
+      final cam = _cameraController;
+      if (cam != null && cam.value.isInitialized) {
+        final shot = await cam.takePicture();
+        shotPath = shot.path;
+      }
+    } catch (e) {
+      debugPrint('takePicture failed: $e');
+    }
+
+    final result = await _detector.detect(imagePath: shotPath);
     if (!mounted) return;
 
     setState(() {
-      _last = result;
+      _pending = result;
       _messages.add(_ReadMsg(
         isUser: false,
         plain: result.spoken,
@@ -118,37 +161,35 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
     });
     _scrollToBottom();
     HapticService.instance.success();
-    await voiceFeedback(context, result.spoken);
+    await voiceFeedback(context,
+        '${result.spoken}. Ketuk mikrofon lagi untuk menyimpan uang ke kantong saku.');
   }
 
-  Future<void> _onWallet() async {
+  Future<void> _savePending() async {
+    final result = _pending;
+    if (result == null) return;
     HapticService.instance.press();
-    final result = _last;
-    if (result != null) {
-      final amount = result.total;
-      PocketStore.instance.addMoney(amount);
-      _last = null;
-      setState(() {
-        _messages.add(_ReadMsg(
-          isUser: true,
-          plain: 'Masukkan ke kantung saku ya',
-          time: DateTime.now(),
-        ));
-        _banner = (
-          title: 'Nominal berhasil ditambahkan',
-          message:
-              'Nominal sebesar ${formatRupiah(amount)} sudah ditambahkan ke kantong saku.',
-        );
-      });
-      _scrollToBottom();
-      HapticService.instance.success();
-      await voiceFeedback(context,
-          'Nominal berhasil ditambahkan. ${spokenRupiah(amount)} masuk ke kantong saku.');
-    } else {
-      await voiceFeedback(context, 'Membuka kantong saku.');
-    }
-    if (!mounted) return;
-    await Navigator.of(context).push(
+    final amount = result.total;
+    PocketStore.instance.addMoney(amount);
+    setState(() {
+      _pending = null;
+      _messages.add(_ReadMsg(isUser: true, plain: 'Simpan uang', time: DateTime.now()));
+    });
+    _showBanner(
+      'Nominal berhasil ditambahkan',
+      'Nominal sebesar ${formatRupiah(amount)} sudah ditambahkan ke kantong saku.',
+    );
+    _scrollToBottom();
+    HapticService.instance.success();
+    await voiceFeedback(context,
+        'Nominal berhasil ditambahkan. ${spokenRupiah(amount)} masuk ke kantong saku.');
+  }
+
+  /// The wallet button only switches to the pocket view — it performs no action.
+  void _onWallet() {
+    HapticService.instance.selection();
+    voiceFeedback(context, 'Membuka kantong saku.');
+    Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const HistoryScreen()),
     );
   }
@@ -229,9 +270,12 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
               top: MediaQuery.paddingOf(context).top + 8,
               left: 16,
               right: 16,
-              child: NotificationBanner(
-                title: _banner!.title,
-                message: _banner!.message,
+              child: GestureDetector(
+                onTap: _dismissBanner,
+                child: NotificationBanner(
+                  title: _banner!.title,
+                  message: _banner!.message,
+                ),
               ),
             ),
         ],
@@ -246,16 +290,20 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Semantics(
             header: true,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xCC1E1E1E),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Text(
-                'Arahkan kamera ke uang, lalu ketuk tombol mikrofon untuk memindai.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontSize: 16),
+            attributedLabel: idLabel(
+                'Arahkan kamera ke uang, lalu ketuk tombol mikrofon untuk memindai.'),
+            child: ExcludeSemantics(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xCC1E1E1E),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Text(
+                  'Arahkan kamera ke uang, lalu ketuk tombol mikrofon untuk memindai.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
               ),
             ),
           ),
@@ -292,6 +340,7 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
           squareBottomRight: true,
           contentAlignEnd: true,
           fullWidth: true,
+          liveRegion: i == _messages.length - 1,
           sender: 'AI',
           time: formatJam(m.time),
           semanticsLabel: 'Aplikasi menjawab: ${m.plain}',
@@ -314,15 +363,19 @@ class _ReadCountScreenState extends State<ReadCountScreen> {
           CircleActionButton(
             icon: Icons.account_balance_wallet_outlined,
             label: 'Kantong saku',
-            hint: 'Simpan uang yang terdeteksi lalu buka kantong saku',
+            hint: 'Beralih ke tampilan kantong saku',
             background: Colors.white,
             foreground: const Color(0xFF1E1E1E),
             onPressed: _onWallet,
           ),
           CircleActionButton(
             icon: Icons.mic,
-            label: _scanning ? 'Sedang memindai uang' : 'Pindai uang',
-            hint: 'Ketuk untuk memindai dan menghitung uang',
+            label: _scanning
+                ? 'Sedang memindai uang'
+                : (_pending != null ? 'Simpan uang' : 'Pindai uang'),
+            hint: _pending != null
+                ? 'Ketuk untuk menyimpan uang ke kantong saku'
+                : 'Ketuk untuk memindai dan menghitung uang',
             background: Colors.white,
             foreground: const Color(0xFF1E1E1E),
             busy: _scanning,
